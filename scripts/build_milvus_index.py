@@ -9,10 +9,15 @@ Interactive usage:
     uv run python scripts/build_milvus_index.py
 
 Non-interactive usage:
-    uv run python scripts/build_milvus_index.py \
-        --api-key sk-... \
-        --base-url https://api.openai.com/v1 \
-        --model text-embedding-3-small
+    cp .env.example .env        # add your API key
+    source .env
+    uv run python scripts/build_milvus_index.py
+
+Or pass the values directly:
+    export OPENAI_BASE_URL=https://api.siliconflow.cn/v1
+    export OPENAI_API_KEY=sk-...
+    export EMBEDDING_MODEL=BAAI/bge-m3
+    uv run python scripts/build_milvus_index.py
 
 The resulting database is written to:
     archaeology_model/indices/milvus.db
@@ -22,6 +27,7 @@ import argparse
 import os
 import re
 import sys
+import time
 import yaml
 from pathlib import Path
 from typing import Iterator
@@ -37,6 +43,8 @@ INDEX_DIR = Path("archaeology_model/indices")
 DEFAULT_DB_PATH = INDEX_DIR / "milvus.db"
 COLLECTION_NAME = "archaeology_chunks"
 BATCH_SIZE = 32
+MAX_CHUNK_CHARS = 6000
+BATCH_DELAY_SECONDS = 0.5
 
 
 def ask(prompt: str, default: str | None = None) -> str:
@@ -88,10 +96,48 @@ def load_frontmatter(text: str) -> tuple[dict[str, str], str]:
     return {}, text
 
 
+def split_long_text(text: str, max_chars: int = MAX_CHUNK_CHARS) -> list[str]:
+    """Split a long text into smaller pieces at paragraph or sentence boundaries."""
+    if len(text) <= max_chars:
+        return [text]
+
+    paragraphs = re.split(r"\n\s*\n", text)
+    pieces: list[str] = []
+    current = ""
+
+    def flush() -> None:
+        nonlocal current
+        stripped = current.strip()
+        if stripped:
+            pieces.append(stripped)
+        current = ""
+
+    for para in paragraphs:
+        # If a single paragraph is already too long, split it by sentences.
+        while len(para) > max_chars:
+            # Take first max_chars chars, try to break at a sentence end.
+            chunk = para[:max_chars]
+            for delim in "。", "？", "！", ". ", "? ", "! ":
+                idx = chunk.rfind(delim)
+                if idx > max_chars * 0.5:
+                    chunk = para[: idx + len(delim)]
+                    break
+            pieces.append(chunk.strip())
+            para = para[len(chunk):]
+
+        if len(current) + len(para) > max_chars and current:
+            flush()
+        current = current + "\n\n" + para if current else para
+
+    flush()
+    return pieces or [text[:max_chars]]
+
+
 def split_by_headings(body: str, min_length: int = 50) -> Iterator[tuple[str, str]]:
     """Split markdown body by ## / ### / #### headings.
 
-    Yields (heading, chunk_text) tuples.
+    Yields (heading, chunk_text) tuples. Long sections are further split by
+    paragraph boundaries.
     """
     lines = body.splitlines()
     current_heading = ""
@@ -101,7 +147,8 @@ def split_by_headings(body: str, min_length: int = 50) -> Iterator[tuple[str, st
         nonlocal current_heading, current_lines
         text = "\n".join(current_lines).strip()
         if len(text) >= min_length:
-            yield current_heading, text
+            for piece in split_long_text(text, MAX_CHUNK_CHARS):
+                yield current_heading, piece
         current_heading = ""
         current_lines = []
 
@@ -114,9 +161,22 @@ def split_by_headings(body: str, min_length: int = 50) -> Iterator[tuple[str, st
     yield from flush()
 
 
-def get_embeddings(client: OpenAI, model: str, texts: list[str]) -> list[list[float]]:
-    response = client.embeddings.create(input=texts, model=model)
-    return [item.embedding for item in response.data]
+def get_embeddings(client: OpenAI, model: str, texts: list[str], max_retries: int = 5) -> list[list[float]]:
+    last_error: Exception | None = None
+    for attempt in range(max_retries):
+        try:
+            response = client.embeddings.create(input=texts, model=model)
+            return [item.embedding for item in response.data]
+        except Exception as e:
+            last_error = e
+            err_str = str(e)
+            if "rate limit" in err_str.lower() or "429" in err_str:
+                wait = 2 ** attempt
+                print(f"  rate limited, waiting {wait}s before retry {attempt + 1}/{max_retries}...", flush=True)
+                time.sleep(wait)
+            else:
+                raise
+    raise last_error or RuntimeError("embedding request failed")
 
 
 def detect_embedding_dim(client: OpenAI, model: str) -> int:
@@ -183,19 +243,42 @@ def build_index(args: argparse.Namespace) -> None:
     chunk_id = 0
     pending_texts: list[str] = []
     pending_records: list[dict] = []
+    records_embedded = 0
+
+    def embed_with_retry(texts: list[str]) -> list[list[float] | None]:
+        """Embed a batch, retrying with smaller batches on failure."""
+        if not texts:
+            return []
+        try:
+            return get_embeddings(client, model, texts)
+        except Exception as e:
+            if len(texts) == 1:
+                print(f"  skipping chunk: {e}")
+                return [None]
+            print(f"  batch failed ({len(texts)} items): {e}, retrying halves...")
+            mid = len(texts) // 2
+            left = embed_with_retry(texts[:mid])
+            right = embed_with_retry(texts[mid:])
+            return left + right
 
     def flush_batch() -> None:
-        nonlocal chunk_id, pending_texts, pending_records
+        nonlocal chunk_id, pending_texts, pending_records, records_embedded
         if not pending_texts:
             return
-        embeddings = get_embeddings(client, model, pending_texts)
+        embeddings = embed_with_retry(pending_texts)
         for rec, emb in zip(pending_records, embeddings):
+            if emb is None:
+                continue
             rec["id"] = chunk_id
             rec["vector"] = emb
             chunk_id += 1
             records.append(rec)
+            records_embedded += 1
         pending_texts.clear()
         pending_records.clear()
+        if BATCH_DELAY_SECONDS > 0:
+            time.sleep(BATCH_DELAY_SECONDS)
+        print(f"  embedded {records_embedded} chunks", end="\r", flush=True)
 
     md_files: list[Path] = []
     for src_dir in SOURCE_DIRS:
