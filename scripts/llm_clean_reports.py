@@ -210,24 +210,31 @@ def main() -> None:
     client = OpenAI(api_key=api_key or "not-needed", base_url=base_url)
     model = select_model(client)
 
-    input_dir = Path(ask("Input directory", str(RAW_DIR)))
+    input_path = Path(ask("Input path (file or directory)", str(RAW_DIR)))
     output_dir = Path(ask("Output directory", str(OUTPUT_DIR)))
 
-    if not input_dir.exists():
-        print(f"Input directory not found: {input_dir}")
+    if not input_path.exists():
+        print(f"Input path not found: {input_path}")
         sys.exit(1)
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    files = sorted(input_dir.rglob("*.md"))
+    if input_path.is_file():
+        if input_path.suffix != ".md":
+            print(f"Input file must be a .md file: {input_path}")
+            sys.exit(1)
+        files = [(input_path, input_path.name)]
+    else:
+        md_files = sorted(input_path.rglob("*.md"))
+        files = [(p, p.relative_to(input_path)) for p in md_files]
+
     if not files:
-        print(f"No .md files found in {input_dir}")
+        print(f"No .md files found at {input_path}")
         sys.exit(1)
 
     print(f"\nFound {len(files)} file(s). Processing with {model}...\n")
 
-    for path in files:
-        relative = path.relative_to(input_dir)
+    for path, relative in files:
         print(f"Processing: {relative}")
         try:
             text = path.read_text(encoding="utf-8")
