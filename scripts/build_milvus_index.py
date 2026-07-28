@@ -44,7 +44,9 @@ def ask(prompt: str, default: str | None = None) -> str:
         full = f"{prompt} [{default}]: "
     else:
         full = f"{prompt}: "
-    value = input(full).strip()
+    sys.stdout.write(full)
+    sys.stdout.flush()
+    value = input().strip()
     if not value and default is not None:
         return default
     return value
@@ -124,8 +126,11 @@ def detect_embedding_dim(client: OpenAI, model: str) -> int:
 
 
 def build_index(args: argparse.Namespace) -> None:
+    base_url = args.base_url or os.getenv("OPENAI_BASE_URL") or ask(
+        "Base URL (use your proxy endpoint, e.g. http://localhost:11434/v1 for Ollama)",
+        "https://api.openai.com/v1",
+    )
     api_key = args.api_key or os.getenv("OPENAI_API_KEY") or ask("API key", "")
-    base_url = args.base_url or os.getenv("OPENAI_BASE_URL") or ask("Base URL", "https://api.openai.com/v1")
 
     client = OpenAI(api_key=api_key or "not-needed", base_url=base_url)
     model = args.model or os.getenv("EMBEDDING_MODEL") or select_model(client)
