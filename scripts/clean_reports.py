@@ -117,6 +117,12 @@ def main():
 
         print(f"cleaned -> {out_path}, moved -> {processed_path}")
 
+    # Remove empty directories left behind under RAW_DIR, but keep PROCESSED_DIR.
+    for dir_path in sorted(RAW_DIR.rglob("*"), reverse=True):
+        if dir_path.is_dir() and dir_path != PROCESSED_DIR and not any(dir_path.iterdir()):
+            dir_path.rmdir()
+            print(f"removed empty dir -> {dir_path}")
+
 
 if __name__ == "__main__":
     main()
