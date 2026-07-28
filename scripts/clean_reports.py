@@ -3,21 +3,25 @@ import re
 import shutil
 from pathlib import Path
 
-RAW_DIR = Path("archaeology_model/corpus/facts/reports_raw")
+RAW_DIR = Path("archaeology_model/corpus/facts/raw")
 CLEAN_DIR = Path("archaeology_model/corpus/facts/clean")
 PROCESSED_DIR = RAW_DIR / "processed"
 HINTS_FILE = Path(__file__).with_name("extraction_hints.json")
 
 
-def load_hints() -> tuple[list[str], list[str]]:
-    """Load region/period hints from JSON so the script stays editable without code changes."""
+def load_hints() -> tuple[list[str], list[str], dict[str, str]]:
+    """Load region/period/source_type hints from JSON so the script stays editable without code changes."""
     if not HINTS_FILE.exists():
-        return [], []
+        return [], [], {}
     data = json.loads(HINTS_FILE.read_text(encoding="utf-8"))
-    return data.get("regions", []), data.get("periods", [])
+    return (
+        data.get("regions", []),
+        data.get("periods", []),
+        data.get("source_types", {}),
+    )
 
 
-REGIONS, PERIODS = load_hints()
+REGIONS, PERIODS, SOURCE_TYPES = load_hints()
 
 
 def clean_markdown(text: str) -> str:
@@ -71,8 +75,18 @@ def extract_period(title: str) -> str | None:
     return None
 
 
-def build_frontmatter(title: str, region: str | None, period: str | None, source_path: Path) -> str:
-    lines = ["---", f'title: "{title}"', f'source_type: excavation_report']
+def extract_source_type(title: str, filename: str) -> str:
+    """Infer document type from Chinese keywords in title or filename."""
+    text = f"{title} {filename}"
+    # Longer keys first to avoid partial matches.
+    for keyword in sorted(SOURCE_TYPES.keys(), key=len, reverse=True):
+        if keyword in text:
+            return SOURCE_TYPES[keyword]
+    return "publication"
+
+
+def build_frontmatter(title: str, region: str | None, period: str | None, source_type: str, source_path: Path) -> str:
+    lines = ["---", f'title: "{title}"', f'source_type: {source_type}']
     if region:
         lines.append(f'region: "{region}"')
     if period:
@@ -101,8 +115,9 @@ def main():
         title = extract_title(cleaned, path.name)
         region = extract_region(title)
         period = extract_period(title)
+        source_type = extract_source_type(title, path.name)
 
-        frontmatter = build_frontmatter(title, region, period, path)
+        frontmatter = build_frontmatter(title, region, period, source_type, path)
         final = f"{frontmatter}\n\n{cleaned}\n"
 
         out_path = CLEAN_DIR / relative

@@ -2,7 +2,7 @@
 .DS_Store
 
 # Raw data and OCR outputs
-archaeology_model/corpus/facts/reports_raw/
+archaeology_model/corpus/facts/raw/
 # Processed data (regenerate on demand)
 archaeology_model/corpus/facts/clean/
 

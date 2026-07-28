@@ -10,5 +10,23 @@
     "旧石器", "新石器", "夏", "商", "周", "春秋", "战国",
     "秦", "汉", "西汉", "东汉", "三国", "魏晋", "南北朝",
     "隋", "唐", "五代", "宋", "辽", "金", "元", "明", "清"
-  ]
+  ],
+  "source_types": {
+    "发掘报告": "excavation_report",
+    "考古发掘报告": "excavation_report",
+    "遗址发掘报告": "excavation_report",
+    "简报": "brief",
+    "发掘简报": "brief",
+    "考古简报": "brief",
+    "研究": "research_paper",
+    "考古学研究": "research_paper",
+    "论文": "paper",
+    "文集": "anthology",
+    "考古文集": "anthology",
+    "报告集": "anthology",
+    "专著": "monograph",
+    "书籍": "book",
+    "调查": "survey",
+    "考古调查": "survey"
+  }
 }

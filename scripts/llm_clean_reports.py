@@ -19,7 +19,7 @@ except ImportError:
     sys.exit(1)
 
 
-RAW_DIR = Path("archaeology_model/corpus/facts/reports_raw")
+RAW_DIR = Path("archaeology_model/corpus/facts/raw")
 OUTPUT_DIR = Path("archaeology_model/corpus/facts/clean")
 # Safety margin for models with ~128k context. Lower this for smaller context windows.
 MAX_TOKENS_PER_CHUNK = 100_000
