@@ -8,6 +8,7 @@ Install dependency first:
     pip install openai
 """
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -21,8 +22,30 @@ except ImportError:
 
 RAW_DIR = Path("archaeology_model/corpus/facts/raw")
 OUTPUT_DIR = Path("archaeology_model/corpus/facts/clean")
+HINTS_FILE = Path(__file__).with_name("extraction_hints.json")
+
 # Safety margin for models with ~128k context. Lower this for smaller context windows.
 MAX_TOKENS_PER_CHUNK = 100_000
+
+# Book-like types are split by top-level # chapters; article-like types by ## sections.
+BOOK_LIKE_SOURCE_TYPES = {"anthology", "monograph", "book", "publication"}
+
+
+def load_source_type_hints() -> dict[str, str]:
+    """Load source_type keyword mapping from extraction_hints.json."""
+    if not HINTS_FILE.exists():
+        return {}
+    data = json.loads(HINTS_FILE.read_text(encoding="utf-8"))
+    return data.get("source_types", {})
+
+
+def infer_source_type(filename: str) -> str:
+    """Infer document type from Chinese keywords in filename."""
+    hints = load_source_type_hints()
+    for keyword in sorted(hints.keys(), key=len, reverse=True):
+        if keyword in filename:
+            return hints[keyword]
+    return "publication"
 
 _SYSTEM_INTRO = """You are an archaeological text cleanup assistant.
 
@@ -99,14 +122,15 @@ def estimate_tokens(text: str) -> int:
     return len(text) // 2
 
 
-def split_by_headings(text: str) -> list[str]:
-    """Split a large markdown file by second-level headings, keeping headings with their sections."""
+def split_by_headings(text: str, level: int = 2) -> list[str]:
+    """Split a markdown file by headings at the given level, keeping headings with their sections."""
+    pattern = rf"^#{{{level}}}\s+"
     lines = text.splitlines()
     chunks = []
     current = []
 
     for line in lines:
-        if re.match(r"^##\s+", line) and current:
+        if re.match(pattern, line) and current:
             chunks.append("\n".join(current))
             current = [line]
         else:
@@ -118,16 +142,43 @@ def split_by_headings(text: str) -> list[str]:
     return chunks
 
 
-def split_into_chunks(text: str, max_tokens: int) -> list[str]:
-    """Return one chunk if small enough; otherwise split by ## headings."""
+def combine_small_chunks(chunks: list[str], max_tokens: int) -> list[str]:
+    """Group consecutive small heading-sections into chunks that fit under max_tokens."""
+    combined = []
+    current_group = []
+    current_tokens = 0
+
+    for chunk in chunks:
+        chunk_tokens = estimate_tokens(chunk)
+        if current_group and current_tokens + chunk_tokens > max_tokens:
+            combined.append("\n\n".join(current_group))
+            current_group = []
+            current_tokens = 0
+        current_group.append(chunk)
+        current_tokens += chunk_tokens
+
+    if current_group:
+        combined.append("\n\n".join(current_group))
+
+    return combined
+
+
+def split_into_chunks(text: str, max_tokens: int, source_type: str = "publication") -> list[str]:
+    """Return one chunk if small; otherwise split by headings appropriate to the document type."""
     if estimate_tokens(text) <= max_tokens:
         return [text]
 
-    heading_chunks = split_by_headings(text)
+    # Book-like documents usually have meaningful top-level # chapters.
+    # Article-like documents usually use ## sections.
+    level = 1 if source_type in BOOK_LIKE_SOURCE_TYPES else 2
+    heading_chunks = split_by_headings(text, level=level)
 
-    # If a single heading chunk is still too large, do a naive character split.
+    # Group consecutive small sections to reduce API calls.
+    combined = combine_small_chunks(heading_chunks, max_tokens)
+
+    # If a single combined chunk is still too large, fall back to naive character split.
     final_chunks = []
-    for chunk in heading_chunks:
+    for chunk in combined:
         if estimate_tokens(chunk) <= max_tokens:
             final_chunks.append(chunk)
         else:
@@ -180,8 +231,9 @@ def main() -> None:
         print(f"Processing: {relative}")
         try:
             text = path.read_text(encoding="utf-8")
-            chunks = split_into_chunks(text, MAX_TOKENS_PER_CHUNK)
-            print(f"  -> split into {len(chunks)} chunk(s)")
+            source_type = infer_source_type(path.name)
+            chunks = split_into_chunks(text, MAX_TOKENS_PER_CHUNK, source_type=source_type)
+            print(f"  -> inferred type: {source_type}, split into {len(chunks)} chunk(s)")
 
             cleaned_parts = []
             for idx, chunk in enumerate(chunks):
