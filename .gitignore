@@ -1,0 +1,34 @@
+# macOS
+.DS_Store
+
+# Raw data and OCR outputs
+archaeology_model/corpus/facts/reports_raw/
+
+# Vector databases and indices
+chroma/
+*.faiss
+*.sqlite3
+*.db
+
+# Model artifacts
+*.bin
+*.safetensors
+*.gguf
+*.pkl
+*.pt
+*.pth
+checkpoints/
+outputs/
+models/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.env.local
+
+# Jupyter
+.ipynb_checkpoints/
