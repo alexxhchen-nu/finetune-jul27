@@ -1,13 +1,23 @@
+import json
 import re
 import shutil
 from pathlib import Path
 
 RAW_DIR = Path("archaeology_model/corpus/facts/reports_raw")
 CLEAN_DIR = Path("archaeology_model/corpus/facts/clean")
+PROCESSED_DIR = RAW_DIR / "processed"
+HINTS_FILE = Path(__file__).with_name("extraction_hints.json")
 
-# Regions and periods used as fallbacks when parsing titles.
-REGIONS = ["河北", "河南", "山东", "山西", "陕西", "北京", "天津"]
-PERIODS = ["旧石器", "新石器", "夏商周", "战国", "秦", "汉", "魏晋", "南北朝", "唐", "宋", "元", "明", "清"]
+
+def load_hints() -> tuple[list[str], list[str]]:
+    """Load region/period hints from JSON so the script stays editable without code changes."""
+    if not HINTS_FILE.exists():
+        return [], []
+    data = json.loads(HINTS_FILE.read_text(encoding="utf-8"))
+    return data.get("regions", []), data.get("periods", [])
+
+
+REGIONS, PERIODS = load_hints()
 
 
 def clean_markdown(text: str) -> str:
@@ -77,8 +87,13 @@ def main():
         raise FileNotFoundError(f"Raw reports dir not found: {RAW_DIR}")
 
     CLEAN_DIR.mkdir(parents=True, exist_ok=True)
+    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
     for path in sorted(RAW_DIR.glob("*.md")):
+        # Skip the README or any file already in a subfolder.
+        if path.parent != RAW_DIR:
+            continue
+
         text = path.read_text(encoding="utf-8")
         cleaned = clean_markdown(text)
 
@@ -91,7 +106,13 @@ def main():
 
         out_path = CLEAN_DIR / path.name
         out_path.write_text(final, encoding="utf-8")
-        print(f"cleaned -> {out_path}")
+
+        processed_path = PROCESSED_DIR / path.name
+        if processed_path.exists():
+            processed_path.unlink()
+        shutil.move(str(path), str(processed_path))
+
+        print(f"cleaned -> {out_path}, moved -> {processed_path}")
 
 
 if __name__ == "__main__":
