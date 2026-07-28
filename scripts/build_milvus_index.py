@@ -126,11 +126,16 @@ def detect_embedding_dim(client: OpenAI, model: str) -> int:
 
 
 def build_index(args: argparse.Namespace) -> None:
-    base_url = args.base_url or os.getenv("OPENAI_BASE_URL") or ask(
-        "Base URL (use your proxy endpoint, e.g. http://localhost:11434/v1 for Ollama)",
-        "https://api.openai.com/v1",
-    )
+    print("\nConfigure embedding endpoint")
+    print("-" * 40)
+    base_url = args.base_url or os.getenv("OPENAI_BASE_URL")
+    if not base_url:
+        base_url = ask("Base URL (e.g. https://api.openai.com/v1 or your proxy)")
+        if not base_url:
+            print("Error: Base URL is required.")
+            sys.exit(1)
     api_key = args.api_key or os.getenv("OPENAI_API_KEY") or ask("API key", "")
+    print(f"Using endpoint: {base_url}\n")
 
     client = OpenAI(api_key=api_key or "not-needed", base_url=base_url)
     model = args.model or os.getenv("EMBEDDING_MODEL") or select_model(client)
