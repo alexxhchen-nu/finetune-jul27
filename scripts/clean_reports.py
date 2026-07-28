@@ -89,11 +89,12 @@ def main():
     CLEAN_DIR.mkdir(parents=True, exist_ok=True)
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
-    for path in sorted(RAW_DIR.glob("*.md")):
-        # Skip the README or any file already in a subfolder.
-        if path.parent != RAW_DIR:
+    for path in sorted(RAW_DIR.rglob("*.md")):
+        # Avoid re-processing files already moved to the processed folder.
+        if PROCESSED_DIR in path.parents or path.parent == PROCESSED_DIR:
             continue
 
+        relative = path.relative_to(RAW_DIR)
         text = path.read_text(encoding="utf-8")
         cleaned = clean_markdown(text)
 
@@ -104,10 +105,12 @@ def main():
         frontmatter = build_frontmatter(title, region, period, path)
         final = f"{frontmatter}\n\n{cleaned}\n"
 
-        out_path = CLEAN_DIR / path.name
+        out_path = CLEAN_DIR / relative
+        out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(final, encoding="utf-8")
 
-        processed_path = PROCESSED_DIR / path.name
+        processed_path = PROCESSED_DIR / relative
+        processed_path.parent.mkdir(parents=True, exist_ok=True)
         if processed_path.exists():
             processed_path.unlink()
         shutil.move(str(path), str(processed_path))
