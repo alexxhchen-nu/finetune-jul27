@@ -527,11 +527,11 @@
 # ### 向量库
 # 
 # ```text
-# Chroma：本地最省事
-# FAISS：轻量
+# Milvus Lite：本地零配置，未来可无缝升级到 Milvus Standalone / Cloud
+# Chroma：本地最省事（保留作为备选）
 # Qdrant：长期项目更稳
 # pgvector：已有 PostgreSQL 时用
-# Milvus：大型系统用
+# Milvus Distributed：大型系统用
 # ```
 # 
 # ### 文档解析
@@ -595,7 +595,7 @@
 # ```text
 # 模型：Qwen2.5-7B-Instruct
 # RAG：LlamaIndex
-# 向量库：Chroma
+# 向量库：Milvus Lite（本地）/ Chroma（备选）
 # 解析：MinerU / PyMuPDF
 # 微调：LLaMA-Factory
 # 部署：Ollama

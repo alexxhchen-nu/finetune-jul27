@@ -8,7 +8,7 @@ archaeology_model/corpus/facts/clean/
 
 # Vector databases and indices
 chroma/
-*.faiss
+milvus.db
 *.sqlite3
 *.db
 
