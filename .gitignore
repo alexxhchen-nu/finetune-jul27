@@ -3,6 +3,8 @@
 
 # Raw data and OCR outputs
 archaeology_model/corpus/facts/reports_raw/
+# Processed data (regenerate on demand)
+archaeology_model/corpus/facts/clean/
 
 # Vector databases and indices
 chroma/
