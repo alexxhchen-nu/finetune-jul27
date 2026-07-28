@@ -8,6 +8,7 @@ dependencies = [
     "chromadb>=1.5.9",
     "datasets>=4.3.0",
     "llama-index>=0.14.23",
+    "openai>=2.49.0",
     "pypdf>=6.14.2",
     "transformers>=5.5.0",
     "trl>=0.24.0",
