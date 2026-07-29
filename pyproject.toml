@@ -15,4 +15,5 @@ dependencies = [
     "trl>=0.24.0",
     "unsloth>=2026.7.5",
     "unsloth-zoo>=2026.7.6",
+    "scikit-learn>=1.9.0",
 ]
