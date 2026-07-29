@@ -54,18 +54,18 @@ HTML = """
   <title>Archaeology DataLab</title>
   <style>
     :root {
-      --bg: #07111f;
-      --panel: rgba(14, 28, 51, 0.76);
-      --panel-strong: #0f1d34;
-      --line: rgba(159, 185, 255, 0.18);
-      --text: #eef5ff;
-      --muted: #8fa4c2;
-      --blue: #39a8ff;
-      --cyan: #54f0ff;
-      --violet: #8f7cff;
-      --green: #67f6b6;
-      --danger: #ff728a;
-      --shadow: 0 28px 80px rgba(0, 0, 0, 0.36);
+      --bg: #f6f8fc;
+      --panel: rgba(255, 255, 255, 0.86);
+      --panel-strong: #ffffff;
+      --line: rgba(23, 48, 92, 0.12);
+      --text: #102033;
+      --muted: #64748b;
+      --blue: #2367ff;
+      --cyan: #00a7c7;
+      --violet: #7658ff;
+      --green: #087f5b;
+      --danger: #d92d4b;
+      --shadow: 0 24px 70px rgba(30, 58, 138, 0.12);
     }
     * { box-sizing: border-box; }
     body {
@@ -74,9 +74,9 @@ HTML = """
       color: var(--text);
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background:
-        radial-gradient(circle at 14% 12%, rgba(57, 168, 255, .26), transparent 28rem),
-        radial-gradient(circle at 86% 8%, rgba(143, 124, 255, .24), transparent 30rem),
-        linear-gradient(180deg, #081528 0%, #06101d 52%, #050b14 100%);
+        radial-gradient(circle at 10% 8%, rgba(35, 103, 255, .13), transparent 26rem),
+        radial-gradient(circle at 88% 4%, rgba(118, 88, 255, .12), transparent 30rem),
+        linear-gradient(180deg, #fbfdff 0%, #f4f7fc 54%, #eef3fb 100%);
     }
     body::before {
       content: "";
@@ -84,10 +84,10 @@ HTML = """
       inset: 0;
       pointer-events: none;
       background-image:
-        linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+        linear-gradient(rgba(35,103,255,.055) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(35,103,255,.055) 1px, transparent 1px);
       background-size: 44px 44px;
-      mask-image: linear-gradient(to bottom, black, transparent 82%);
+      mask-image: linear-gradient(to bottom, black, transparent 80%);
     }
     .shell { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 24px 0 64px; position: relative; }
     .nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 44px; }
@@ -103,31 +103,31 @@ HTML = """
       padding: 44px;
       border: 1px solid var(--line);
       border-radius: 30px;
-      background: linear-gradient(135deg, rgba(15, 29, 52, .92), rgba(13, 24, 44, .68));
+      background: linear-gradient(135deg, rgba(255, 255, 255, .95), rgba(239, 246, 255, .72));
       box-shadow: var(--shadow);
       backdrop-filter: blur(16px);
     }
     .eyebrow { color: var(--green); font-size: 13px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
     h1 { margin: 18px 0 16px; font-size: clamp(40px, 7vw, 78px); line-height: .92; letter-spacing: -.06em; }
-    .lead { max-width: 680px; color: #b7c8df; font-size: 18px; line-height: 1.75; }
+    .lead { max-width: 680px; color: #52657d; font-size: 18px; line-height: 1.75; }
     .stats { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 30px; }
-    .stat { border: 1px solid var(--line); border-radius: 18px; padding: 14px 18px; background: rgba(255,255,255,.04); min-width: 138px; }
+    .stat { border: 1px solid var(--line); border-radius: 18px; padding: 14px 18px; background: rgba(35,103,255,.045); min-width: 138px; }
     .stat b { display:block; font-size: 24px; }
     .stat span { color: var(--muted); font-size: 13px; }
     .search-panel {
       padding: 24px;
       border: 1px solid var(--line);
       border-radius: 30px;
-      background: rgba(7, 17, 31, .72);
+      background: rgba(255, 255, 255, .88);
       box-shadow: var(--shadow);
       backdrop-filter: blur(16px);
     }
     .panel-head { display:flex; justify-content:space-between; align-items:center; margin-bottom: 18px; }
     .pill { color: var(--cyan); border: 1px solid rgba(84,240,255,.28); background: rgba(84,240,255,.08); padding: 7px 10px; border-radius: 999px; font-size: 12px; }
-    label { display: block; margin: 14px 0 8px; color: #cfe0f4; font-size: 13px; font-weight: 700; }
+    label { display: block; margin: 14px 0 8px; color: #263b57; font-size: 13px; font-weight: 700; }
     textarea, input, select {
-      width: 100%; border: 1px solid rgba(159,185,255,.2); color: var(--text);
-      background: rgba(255,255,255,.055); border-radius: 15px; padding: 13px 14px;
+      width: 100%; border: 1px solid rgba(23, 48, 92, .16); color: var(--text);
+      background: rgba(255,255,255,.8); border-radius: 15px; padding: 13px 14px;
       outline: none; font: inherit;
     }
     textarea { min-height: 116px; resize: vertical; }
@@ -143,16 +143,18 @@ HTML = """
     .results { margin-top: 28px; display:grid; gap: 16px; }
     .result {
       border: 1px solid var(--line); border-radius: 24px; padding: 20px;
-      background: linear-gradient(180deg, rgba(18,34,61,.86), rgba(9,19,36,.76));
-      box-shadow: 0 18px 52px rgba(0,0,0,.24);
+      background: rgba(255, 255, 255, .92);
+      box-shadow: 0 18px 52px rgba(30,58,138,.10);
     }
     .result-top { display:flex; gap: 10px; align-items:center; flex-wrap:wrap; margin-bottom: 12px; }
     .score { color: var(--green); font-variant-numeric: tabular-nums; font-weight: 800; }
     .tag { color: #d9e7ff; background: rgba(143,124,255,.15); border: 1px solid rgba(143,124,255,.28); padding: 5px 9px; border-radius: 999px; font-size: 12px; }
     .title { font-size: 18px; font-weight: 800; margin-bottom: 6px; }
     .meta { color: var(--muted); font-size: 13px; line-height: 1.65; margin-bottom: 14px; }
-    .text { color: #dbe8f7; line-height: 1.8; white-space: pre-wrap; }
-    .empty, .error { border: 1px dashed var(--line); border-radius: 20px; padding: 22px; color: var(--muted); background: rgba(255,255,255,.04); }
+    .text { color: #263b57; line-height: 1.8; white-space: pre-wrap; max-height: 9.8em; overflow: hidden; }
+    details[open] .text { max-height: none; }
+    summary { cursor: pointer; color: var(--blue); font-weight: 700; margin-top: 12px; }
+    .empty, .error { border: 1px dashed var(--line); border-radius: 20px; padding: 22px; color: var(--muted); background: rgba(255,255,255,.7); }
     .error { color: var(--danger); border-color: rgba(255,114,138,.34); }
     @media (max-width: 900px) { .hero { grid-template-columns: 1fr; } .hero-copy { padding: 28px; } .nav-links { display:none; } }
     @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } .shell { width: min(100% - 20px, 1180px); } h1 { font-size: 43px; } }
@@ -204,6 +206,8 @@ HTML = """
     const results = document.querySelector('#results');
     const button = document.querySelector('#submit');
     const esc = s => String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const clean = s => String(s || '').replace(/\\s+/g, ' ').trim();
+    const preview = s => clean(s).slice(0, 360) + (clean(s).length > 360 ? '…' : '');
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       const params = new URLSearchParams(new FormData(form));
@@ -220,11 +224,13 @@ HTML = """
         }
         results.innerHTML = data.results.map((hit, i) => {
           const e = hit.entity || {};
+          const fullText = clean(e.text);
           return `<article class="result">
             <div class="result-top"><span class="score">#${i + 1} · ${Number(hit.distance).toFixed(4)}</span><span class="tag">${esc(e.chunk_type || '未分类')}</span><span class="tag">${esc(e.corpus || '')}</span></div>
-            <div class="title">${esc(e.title)}</div>
-            <div class="meta">${esc(e.heading)}<br>${esc(e.source_file)}<br>${esc(e.region)} ${esc(e.period)} · ${esc(e.chunk_topics)}</div>
-            <div class="text">${esc(e.text)}</div>
+            <div class="title">${esc(e.title || '未命名文档')}</div>
+            <div class="meta"><strong>章节</strong>：${esc(e.heading || '无')}<br><strong>来源</strong>：${esc(e.source_file || '')}<br><strong>属性</strong>：${esc([e.region, e.period, e.chunk_topics].filter(Boolean).join(' · ') || '无')}</div>
+            <div class="text">${esc(preview(fullText))}</div>
+            ${fullText.length > 360 ? `<details><summary>展开全文</summary><div class="text">${esc(fullText)}</div></details>` : ''}
           </article>`;
         }).join('');
       } catch (err) {
