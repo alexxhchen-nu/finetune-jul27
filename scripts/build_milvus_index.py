@@ -46,6 +46,19 @@ BATCH_SIZE = 32
 MAX_CHUNK_CHARS = 6000
 BATCH_DELAY_SECONDS = 0.5
 
+NOISE_HEADING_PATTERNS = [
+    r"^(目录|插图目录|图版目录|彩版目录|插表目录)$",
+    r"^[一二三四五六七八九十]、?(前言|目录|绪论|结语|结论)$",
+    r"^(注\s*释|注释)$",
+    r"^(后记|前言|Abstract)$",
+    r"^(图版|彩版)\s*\w+$",
+    r"^[一二三四五六七八九十]$",
+]
+
+
+def is_noise_heading(heading: str) -> bool:
+    return any(re.compile(p).match(heading) for p in NOISE_HEADING_PATTERNS)
+
 
 def ask(prompt: str, default: str | None = None) -> str:
     if default is not None:
@@ -300,7 +313,7 @@ def build_index(args: argparse.Namespace) -> None:
 
         corpus = "facts" if "facts/clean" in rel_path else ("methods" if "methods" in rel_path else "other")
         for heading, chunk_text in chunks:
-            if len(chunk_text) < 50:
+            if len(chunk_text) < 50 or is_noise_heading(heading):
                 continue
             record = {
                 "text": chunk_text,
