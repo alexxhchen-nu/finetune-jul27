@@ -11,6 +11,9 @@ chroma/
 milvus.db
 *.sqlite3
 *.db
+archaeology_model/indices/
+build_index.log
+build_index.pid
 
 # Model artifacts
 *.bin

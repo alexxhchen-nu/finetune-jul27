@@ -35,6 +35,7 @@ def search(
     corpus: str | None = None,
     region: str | None = None,
     period: str | None = None,
+    chunk_type: str | None = None,
 ) -> list[dict]:
     api_key = os.getenv("OPENAI_API_KEY", "")
     base_url = os.getenv("OPENAI_BASE_URL", "https://api.siliconflow.cn/v1")
@@ -53,6 +54,8 @@ def search(
         filters.append(f'region == "{region}"')
     if period:
         filters.append(f'period == "{period}"')
+    if chunk_type:
+        filters.append(f'chunk_type == "{chunk_type}"')
     expr = " and ".join(filters) if filters else None
 
     results = milvus.search(
@@ -67,6 +70,8 @@ def search(
             "region",
             "period",
             "corpus",
+            "chunk_type",
+            "chunk_topics",
         ],
         filter=expr,
         limit=top_k,
@@ -80,6 +85,7 @@ def format_hit(hit: dict, index: int) -> str:
     wrapped = textwrap.fill(text, width=100, initial_indent="        ", subsequent_indent="        ")
     lines = [
         f"[{index + 1}] score={hit['distance']:.4f}",
+        f"    type: {entity.get('chunk_type', '')} | topics: {entity.get('chunk_topics', '')}",
         f"    title: {entity.get('title', '')}",
         f"    heading: {entity.get('heading', '')}",
         f"    source: {entity.get('source_file', '')}",
@@ -97,6 +103,7 @@ def main() -> None:
     parser.add_argument("--corpus", choices=["facts", "methods"], help="Filter by corpus")
     parser.add_argument("--region", help="Filter by region metadata")
     parser.add_argument("--period", help="Filter by period metadata")
+    parser.add_argument("--chunk-type", help="Filter by chunk_type")
     args = parser.parse_args()
 
     query = args.query
@@ -113,6 +120,7 @@ def main() -> None:
         corpus=args.corpus,
         region=args.region,
         period=args.period,
+        chunk_type=args.chunk_type,
     )
 
     if not hits:

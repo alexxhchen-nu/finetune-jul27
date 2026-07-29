@@ -24,6 +24,7 @@ The resulting database is written to:
 """
 
 import argparse
+import json
 import os
 import re
 import sys
@@ -58,6 +59,46 @@ NOISE_HEADING_PATTERNS = [
 
 def is_noise_heading(heading: str) -> bool:
     return any(re.compile(p).match(heading) for p in NOISE_HEADING_PATTERNS)
+
+
+CHUNK_TYPES_PATH = Path("archaeology_model/glossary/chunk_types.json")
+
+KEYWORD_RULES: list[tuple[list[str], str]] = [
+    (["墓葬形制", "墓道", "墓室", "墓门", "墓圹", "墓坑", "封门", "甬道", "耳室", "前室", "后室", "二层台"], "墓葬形制"),
+    (["随葬", "陶罐", "陶器", "铜器", "铁器", "石器", "骨器", "玉器", "漆器", "金银器", "铜镜", "带钩", "陶壶", "陶盆"], "随葬器物"),
+    (["葬式", "葬具", "棺椁", "人骨", "骨架", "仰身", "直肢", "屈肢", "木棺"], "葬式葬具"),
+    (["分期", "年代", "断代", "期别", "早晚", "战国", "西汉", "东汉", "新石器"], "年代分期"),
+    (["发掘", "地层", "层位", "堆积", "探方", "遗迹", "清理", "记录"], "发掘方法"),
+    (["遗址", "地理位置", "环境", "概况", "地貌", "位置"], "遗址背景"),
+    (["附表", "统计表", "登记表", "图版", "彩版", "插图", "插表"], "图表数据"),
+]
+
+
+def load_taxonomy() -> tuple[set[str], dict[str, str]]:
+    base_types: set[str] = set()
+    heading_map: dict[str, str] = {}
+    if CHUNK_TYPES_PATH.exists():
+        data = json.loads(CHUNK_TYPES_PATH.read_text(encoding="utf-8"))
+        base_types = set(data.get("base_types", []))
+        heading_map = data.get("heading_map", {})
+    return base_types, heading_map
+
+
+def classify_chunk(heading: str, text: str, heading_map: dict[str, str]) -> str:
+    if heading in heading_map:
+        return heading_map[heading]
+    combined = f"{heading}\n{text[:300]}"
+    for keywords, label in KEYWORD_RULES:
+        if any(kw in combined for kw in keywords):
+            return label
+    return "其他"
+
+
+def extract_topics(heading: str, text: str, chunk_type: str) -> str:
+    """Extract a short topic string for exploration."""
+    if heading:
+        return heading
+    return chunk_type
 
 
 def ask(prompt: str, default: str | None = None) -> str:
@@ -217,6 +258,10 @@ def build_index(args: argparse.Namespace) -> None:
     embedding_dim = detect_embedding_dim(client, model)
     print(f"Detected embedding dimension: {embedding_dim}")
 
+    base_types, heading_map = load_taxonomy()
+    if base_types:
+        print(f"Loaded taxonomy with {len(base_types)} base types, {len(heading_map)} heading mappings")
+
     db_path = Path(args.db) if args.db else DEFAULT_DB_PATH
     INDEX_DIR.mkdir(parents=True, exist_ok=True)
     milvus = MilvusClient(uri=str(db_path))
@@ -238,6 +283,8 @@ def build_index(args: argparse.Namespace) -> None:
     schema.add_field("source_file", DataType.VARCHAR, max_length=512)
     schema.add_field("heading", DataType.VARCHAR, max_length=512)
     schema.add_field("corpus", DataType.VARCHAR, max_length=32)
+    schema.add_field("chunk_type", DataType.VARCHAR, max_length=64)
+    schema.add_field("chunk_topics", DataType.VARCHAR, max_length=512)
 
     index_params = milvus.prepare_index_params()
     index_params.add_index(
@@ -252,7 +299,6 @@ def build_index(args: argparse.Namespace) -> None:
         index_params=index_params,
     )
 
-    records: list[dict] = []
     chunk_id = 0
     pending_texts: list[str] = []
     pending_records: list[dict] = []
@@ -279,14 +325,18 @@ def build_index(args: argparse.Namespace) -> None:
         if not pending_texts:
             return
         embeddings = embed_with_retry(pending_texts)
+        batch_records: list[dict] = []
         for rec, emb in zip(pending_records, embeddings):
             if emb is None:
                 continue
             rec["id"] = chunk_id
             rec["vector"] = emb
             chunk_id += 1
-            records.append(rec)
+            batch_records.append(rec)
             records_embedded += 1
+        if batch_records:
+            milvus.insert(collection_name=COLLECTION_NAME, data=batch_records)
+            milvus.flush(collection_name=COLLECTION_NAME)
         pending_texts.clear()
         pending_records.clear()
         if BATCH_DELAY_SECONDS > 0:
@@ -315,6 +365,7 @@ def build_index(args: argparse.Namespace) -> None:
         for heading, chunk_text in chunks:
             if len(chunk_text) < 50 or is_noise_heading(heading):
                 continue
+            chunk_type = classify_chunk(heading, chunk_text, heading_map)
             record = {
                 "text": chunk_text,
                 "title": meta.get("title", path.stem) or path.stem,
@@ -324,6 +375,8 @@ def build_index(args: argparse.Namespace) -> None:
                 "source_file": rel_path,
                 "heading": heading,
                 "corpus": corpus,
+                "chunk_type": chunk_type,
+                "chunk_topics": extract_topics(heading, chunk_text, chunk_type),
             }
             pending_texts.append(chunk_text)
             pending_records.append(record)
@@ -333,11 +386,9 @@ def build_index(args: argparse.Namespace) -> None:
 
     flush_batch()
 
-    if records:
-        milvus.insert(collection_name=COLLECTION_NAME, data=records)
-        milvus.flush(collection_name=COLLECTION_NAME)
-        milvus.load_collection(COLLECTION_NAME)
-        print(f"Indexed {len(records)} chunks from {len(md_files)} files into {db_path}")
+    milvus.load_collection(COLLECTION_NAME)
+    if records_embedded:
+        print(f"Indexed {records_embedded} chunks from {len(md_files)} files into {db_path}")
     else:
         print("No chunks found to index.")
 
@@ -360,7 +411,7 @@ def search(query: str, top_k: int = 5) -> list[dict]:
     results = milvus.search(
         collection_name=COLLECTION_NAME,
         data=[embedding],
-        output_fields=["title", "heading", "text", "source_file", "source_type", "region", "period", "corpus"],
+        output_fields=["title", "heading", "text", "source_file", "source_type", "region", "period", "corpus", "chunk_type", "chunk_topics"],
         limit=top_k,
     )
     return results[0]
