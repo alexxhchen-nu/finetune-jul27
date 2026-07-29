@@ -16,6 +16,7 @@ Read .env for OPENAI_BASE_URL, OPENAI_API_KEY and EMBEDDING_MODEL.
 import argparse
 import os
 import textwrap
+import time
 
 from openai import OpenAI
 from pymilvus import MilvusClient
@@ -24,9 +25,20 @@ COLLECTION_NAME = "archaeology_chunks"
 DB_PATH = "archaeology_model/indices/milvus.db"
 
 
-def get_embeddings(client: OpenAI, model: str, texts: list[str]) -> list[list[float]]:
-    response = client.embeddings.create(input=texts, model=model)
-    return [item.embedding for item in response.data]
+def get_embeddings(client: OpenAI, model: str, texts: list[str], max_retries: int = 5) -> list[list[float]]:
+    last_error: Exception | None = None
+    for attempt in range(max_retries):
+        try:
+            response = client.embeddings.create(input=texts, model=model)
+            return [item.embedding for item in response.data]
+        except Exception as e:
+            last_error = e
+            err = str(e).lower()
+            if any(code in err for code in ("429", "500", "502", "503", "504", "rate limit", "overloaded", "timeout")):
+                time.sleep(2 ** attempt)
+                continue
+            raise
+    raise last_error or RuntimeError("embedding request failed")
 
 
 def search(
@@ -41,7 +53,7 @@ def search(
     base_url = os.getenv("OPENAI_BASE_URL", "https://api.siliconflow.cn/v1")
     model = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
 
-    client = OpenAI(api_key=api_key, base_url=base_url)
+    client = OpenAI(api_key=api_key, base_url=base_url, timeout=60.0)
     embedding = get_embeddings(client, model, [query])[0]
 
     milvus = MilvusClient(uri=DB_PATH)

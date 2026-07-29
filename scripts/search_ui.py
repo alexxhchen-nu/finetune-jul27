@@ -42,7 +42,7 @@ def load_env(path: str = ".env") -> None:
         if line.startswith("export "):
             line = line[len("export ") :]
         key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip())
+        os.environ[key.strip()] = value.strip()
 
 
 HTML = """
