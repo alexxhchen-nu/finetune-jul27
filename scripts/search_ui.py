@@ -226,7 +226,7 @@ HTML = """
           const e = hit.entity || {};
           const fullText = clean(e.text);
           return `<article class="result">
-            <div class="result-top"><span class="score">#${i + 1} · ${Number(hit.distance).toFixed(4)}</span><span class="tag">${esc(e.chunk_type || '未分类')}</span><span class="tag">${esc(e.corpus || '')}</span></div>
+            <div class="result-top"><span class="score">#${i + 1} · ${Number(hit.distance).toFixed(4)}</span></div>
             <div class="title">${esc(e.title || '未命名文档')}</div>
             <div class="meta"><strong>章节</strong>：${esc(e.heading || '无')}<br><strong>来源</strong>：${esc(e.source_file || '')}<br><strong>属性</strong>：${esc([e.region, e.period, e.chunk_topics].filter(Boolean).join(' · ') || '无')}</div>
             <div class="text">${esc(preview(fullText))}</div>
