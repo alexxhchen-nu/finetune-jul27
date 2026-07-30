@@ -250,14 +250,32 @@ HTML = """
     .tag { color: #d9e7ff; background: rgba(143,124,255,.15); border: 1px solid rgba(143,124,255,.28); padding: 5px 9px; border-radius: 999px; font-size: 12px; }
     .title { font-size: 18px; font-weight: 800; margin-bottom: 6px; }
     .meta { color: var(--muted); font-size: 13px; line-height: 1.65; margin-bottom: 14px; }
-    .text { color: #263b57; line-height: 1.8; white-space: pre-wrap; max-height: 10em; overflow: hidden; position: relative; }
-    .text.truncated::after {
-      content: ""; position: absolute; bottom: 0; left: 0; right: 0; height: 2.5em;
-      background: linear-gradient(transparent, rgba(255,255,255,.95));
-    }
-    details[open] .text { max-height: none; }
-    details[open] .text::after { display: none; }
-    summary { cursor: pointer; color: var(--blue); font-weight: 700; margin-top: 12px; }
+     .text { color: #263b57; line-height: 1.8; white-space: pre-wrap; max-height: 10em; overflow-y: auto; position: relative; padding-right: 8px; cursor: pointer; }
+     .text::-webkit-scrollbar { width: 8px; }
+     .text::-webkit-scrollbar-thumb { background: rgba(35,103,255,.25); border-radius: 999px; }
+     .text.truncated::after {
+       content: "点击查看全文"; position: absolute; bottom: 0; left: 0; right: 0; height: 2.5em;
+       display: flex; align-items: flex-end; justify-content: flex-end; padding: 0 8px 2px;
+       color: var(--blue); font-size: 12px; font-weight: 700;
+       background: linear-gradient(transparent, rgba(255,255,255,.95));
+       pointer-events: none;
+     }
+     .text.truncated:hover { background: rgba(35,103,255,.035); }
+     details[open] .text { max-height: none; }
+     details[open] .text::after { display: none; }
+     summary { cursor: pointer; color: var(--blue); font-weight: 700; margin-top: 12px; }
+     dialog {
+       width: min(760px, calc(100% - 32px)); max-height: min(80vh, 720px); padding: 0;
+       border: 1px solid var(--line); border-radius: 20px; color: var(--text);
+       background: var(--panel-strong); box-shadow: 0 24px 80px rgba(30,58,138,.28);
+     }
+     dialog::backdrop { background: rgba(16,32,51,.38); backdrop-filter: blur(3px); }
+     .dialog-head { display:flex; justify-content:space-between; gap: 16px; align-items:flex-start; padding: 20px 22px 14px; border-bottom: 1px solid var(--line); }
+     .dialog-title { font-weight: 800; line-height: 1.5; }
+     .dialog-close { width: auto; margin: 0; padding: 6px 10px; background: transparent; color: var(--muted); box-shadow: none; font-size: 20px; }
+     .dialog-meta { padding: 12px 22px 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+     .dialog-text { padding: 16px 22px 22px; max-height: 60vh; overflow-y: auto; color: #263b57; line-height: 1.8; white-space: pre-wrap; }
+
     .empty, .error { border: 1px dashed var(--line); border-radius: 20px; padding: 22px; color: var(--muted); background: rgba(255,255,255,.7); }
     .error { color: var(--danger); border-color: rgba(255,114,138,.34); }
     .num { color: var(--blue); font-weight: 700; background: rgba(35,103,255,.08); padding: 0 3px; border-radius: 4px; }
@@ -330,7 +348,13 @@ HTML = """
       </div>
     </div>
     <div class="side-toggle" id="side-toggle" title="切换证据面板">◀</div>
-    <div class="tooltip" id="tooltip"></div>
+     <div class="tooltip" id="tooltip"></div>
+     <dialog id="evidence-dialog">
+       <div class="dialog-head"><div class="dialog-title" id="dialog-title"></div><button class="dialog-close" type="button" aria-label="关闭">×</button></div>
+       <div class="dialog-meta" id="dialog-meta"></div>
+       <div class="dialog-text" id="dialog-text"></div>
+     </dialog>
+
   </main>
   <script>
     const chunkTypes = __CHUNK_TYPES__;
@@ -366,10 +390,39 @@ HTML = """
     const ragBtn = document.querySelector('#rag-btn');
     const sidePanel = document.querySelector('#side-panel');
     const sideItems = document.querySelector('#side-items');
-    const sideToggle = document.querySelector('#side-toggle');
-    const tooltip = document.querySelector('#tooltip');
+     const sideToggle = document.querySelector('#side-toggle');
+     const tooltip = document.querySelector('#tooltip');
+     const evidenceDialog = document.querySelector('#evidence-dialog');
+     const dialogTitle = document.querySelector('#dialog-title');
+     const dialogMeta = document.querySelector('#dialog-meta');
+     const dialogText = document.querySelector('#dialog-text');
 
-    function updateSidePanel(hits) {
+     function openEvidence(hit) {
+       const e = hit.entity || {};
+       dialogTitle.textContent = e.title || '未命名文档';
+       dialogMeta.textContent = [e.heading, e.chunk_type, e.source_file].filter(Boolean).join(' · ');
+       dialogText.textContent = clean(e.text);
+       evidenceDialog.showModal();
+     }
+
+     evidenceDialog.querySelector('.dialog-close').addEventListener('click', () => evidenceDialog.close());
+     evidenceDialog.addEventListener('click', event => {
+       if (event.target === evidenceDialog) evidenceDialog.close();
+     });
+     results.addEventListener('click', event => {
+       const text = event.target.closest('.text-preview');
+       if (text && lastHits[text.dataset.idx]) openEvidence(lastHits[text.dataset.idx]);
+     });
+     results.addEventListener('keydown', event => {
+       const text = event.target.closest('.text-preview');
+       if (text && (event.key === 'Enter' || event.key === ' ')) {
+         event.preventDefault();
+         openEvidence(lastHits[text.dataset.idx]);
+       }
+     });
+
+     function updateSidePanel(hits) {
+
       sideItems.innerHTML = hits.map((hit, i) => {
         const e = hit.entity || {};
         return `<div class="side-item" data-idx="${i}">
@@ -419,8 +472,8 @@ HTML = """
             <div class="title">${esc(e.title || '未命名文档')}</div>
             <div class="meta"><strong>章节</strong>：${esc(e.heading || '无')}<br><strong>来源</strong>：${esc(e.source_file || '')}<br><strong>属性</strong>：${esc([e.region, e.period, e.chunk_topics].filter(Boolean).join(' · ') || '无')}</div>
             ${keyData ? `<div class="key-data">${keyData}</div>` : ''}
-            <div class="text truncated">${hlNum(preview(fullText))}</div>
-            ${fullText.length > 360 ? `<details><summary>展开全文</summary><div class="text">${hlNum(fullText)}</div></details>` : ''}
+             <div class="text text-preview truncated" data-idx="${i}" role="button" tabindex="0" aria-label="查看完整证据">${hlNum(fullText)}</div>
+
           </article>`;
         }).join('');
         lastHits = data.results;
@@ -453,8 +506,8 @@ HTML = """
             <div class="title">${esc(e.title || '未命名文档')}</div>
             <div class="meta"><strong>章节</strong>：${esc(e.heading || '无')}<br><strong>来源</strong>：${esc(e.source_file || '')}<br><strong>属性</strong>：${esc([e.region, e.period, e.chunk_topics].filter(Boolean).join(' · ') || '无')}</div>
             ${keyData ? `<div class="key-data">${keyData}</div>` : ''}
-            <div class="text truncated">${hlNum(preview(fullText))}</div>
-            ${fullText.length > 360 ? `<details><summary>展开全文</summary><div class="text">${hlNum(fullText)}</div></details>` : ''}
+             <div class="text text-preview truncated" data-idx="${i}" role="button" tabindex="0" aria-label="查看完整证据">${hlNum(fullText)}</div>
+
           </article>`;
         }).join('');
         lastHits = data.results;
