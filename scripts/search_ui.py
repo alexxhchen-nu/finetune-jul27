@@ -7,10 +7,12 @@ Usage:
 
 import json
 import os
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from openai import OpenAI
 from search_milvus import search
 
 HOST = "127.0.0.1"
@@ -29,6 +31,53 @@ CHUNK_TYPES = [
     "遗物",
     "其他",
 ]
+
+RAG_PROMPT = """你是一位考古学研究助手。根据以下检索到的考古报告原文片段，回答用户的问题。
+
+规则：
+1. 只基于提供的原文回答，不要编造
+2. 每个关键论述必须标注出处，格式为 [1] [2] 等（对应原文片段编号）
+3. 如果原文中有具体数字（墓数、尺寸、年代），必须引用
+4. 如果原文之间有矛盾，指出矛盾
+5. 如果原文不足以回答问题，说明缺少什么信息
+6. 用中文回答，简洁准确"""
+
+
+def call_llm(query: str, hits: list[dict]) -> str:
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    base_url = os.getenv("OPENAI_BASE_URL", "https://api.siliconflow.cn/v1")
+    model = os.getenv("RAG_MODEL", "Qwen/Qwen2.5-14B-Instruct")
+    client = OpenAI(api_key=api_key, base_url=base_url, timeout=90.0)
+
+    context_parts = []
+    for i, hit in enumerate(hits):
+        e = hit.get("entity", {})
+        context_parts.append(f"[{i+1}] 标题: {e.get('title','')} | 章节: {e.get('heading','')} | 类型: {e.get('chunk_type','')}\n{e.get('text','')}")
+    context = "\n\n---\n\n".join(context_parts)
+
+    user_msg = f"问题：{query}\n\n原文片段：\n{context}"
+
+    last_error = None
+    for attempt in range(3):
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": RAG_PROMPT},
+                    {"role": "user", "content": user_msg},
+                ],
+                temperature=0.2,
+                max_tokens=2048,
+            )
+            return response.choices[0].message.content or ""
+        except Exception as e:
+            last_error = e
+            err = str(e).lower()
+            if any(code in err for code in ("429", "500", "502", "503", "504", "rate limit", "overloaded", "timeout", "connection")):
+                time.sleep(2 ** attempt)
+                continue
+            raise
+    return f"LLM 调用失败: {last_error}"
 
 
 def load_env(path: str = ".env") -> None:
@@ -162,6 +211,16 @@ HTML = """
     .key-data .chip b { color: var(--blue); }
     .group { margin-bottom: 24px; }
     .group-head { font-size: 15px; font-weight: 800; color: var(--violet); margin-bottom: 10px; padding-bottom: 6px; border-bottom: 2px solid rgba(118,88,255,.18); }
+    .answer {
+      margin-top: 28px; border: 1px solid var(--line); border-radius: 24px; padding: 24px;
+      background: linear-gradient(135deg, rgba(255,255,255,.96), rgba(239,246,255,.82));
+      box-shadow: 0 18px 52px rgba(30,58,138,.10);
+    }
+    .answer-head { font-size: 15px; font-weight: 800; color: var(--violet); margin-bottom: 14px; }
+    .answer-body { color: #263b57; line-height: 1.9; font-size: 15px; }
+    .answer-body .cite { color: var(--blue); cursor: pointer; font-weight: 700; text-decoration: underline; text-decoration-color: rgba(35,103,255,.3); }
+    .answer-body .cite:hover { background: rgba(35,103,255,.08); border-radius: 4px; padding: 0 2px; }
+    .evidence-highlight { background: rgba(35,103,255,.10); border-left: 3px solid var(--blue); padding: 2px 8px; border-radius: 4px; }
     @media (max-width: 900px) { .hero { grid-template-columns: 1fr; } .hero-copy { padding: 28px; } .nav-links { display:none; } }
     @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } .shell { width: min(100% - 20px, 1180px); } h1 { font-size: 43px; } }
   </style>
@@ -195,8 +254,10 @@ HTML = """
           <div><label for="period">时期</label><input id="period" name="period" placeholder="如：汉" /></div>
         </div>
         <button id="submit" type="submit">检索证据</button>
+        <button id="rag-btn" type="button" style="margin-top:10px;background:linear-gradient(135deg,var(--violet),var(--blue) 55%,var(--cyan));color:#fff;">AI 综合回答</button>
       </form>
     </section>
+    <section class="answer" id="answer" style="display:none;"></section>
     <section class="results" id="results"><div class="empty">等待查询。索引重建完成后即可检索。</div></section>
   </main>
   <script>
@@ -219,6 +280,8 @@ HTML = """
       const nums = [...s.matchAll(/(\\d[\\d,.]*\\d|\\d)(座|件|个|米|厘米|层|年|种|类|型|式|组)/g)].slice(0, 6);
       return nums.map(m => `<span class="chip"><b>${esc(m[1])}</b>${esc(m[2])}</span>`).join('');
     };
+    const answerEl = document.querySelector('#answer');
+    const ragBtn = document.querySelector('#rag-btn');
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       const params = new URLSearchParams(new FormData(form));
@@ -253,6 +316,48 @@ HTML = """
         button.textContent = '检索证据';
       }
     });
+    ragBtn.addEventListener('click', async () => {
+      const params = new URLSearchParams(new FormData(form));
+      ragBtn.disabled = true;
+      ragBtn.textContent = 'AI 思考中...';
+      answerEl.style.display = 'block';
+      answerEl.innerHTML = '<div class="answer-head">综合回答</div><div class="answer-body">正在检索 + 生成回答...</div>';
+      try {
+        const res = await fetch('/api/rag?' + params.toString());
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'RAG 失败');
+        let answerHtml = esc(data.answer || '').replace(/\\[(\\d+)\\]/g, '<span class="cite" data-ref="$1">[$1]</span>');
+        answerEl.innerHTML = `<div class="answer-head">综合回答</div><div class="answer-body">${answerHtml}</div>`;
+        results.innerHTML = data.results.map((hit, i) => {
+          const e = hit.entity || {};
+          const fullText = clean(e.text);
+          const keyData = extractKeyData(fullText);
+          return `<article class="result" id="ref-${i+1}">
+            <div class="result-top"><span class="score">[${i + 1}] · ${Number(hit.distance).toFixed(4)}</span></div>
+            <div class="title">${esc(e.title || '未命名文档')}</div>
+            <div class="meta"><strong>章节</strong>：${esc(e.heading || '无')}<br><strong>来源</strong>：${esc(e.source_file || '')}<br><strong>属性</strong>：${esc([e.region, e.period, e.chunk_topics].filter(Boolean).join(' · ') || '无')}</div>
+            ${keyData ? `<div class="key-data">${keyData}</div>` : ''}
+            <div class="text">${hlNum(preview(fullText))}</div>
+            ${fullText.length > 360 ? `<details><summary>展开全文</summary><div class="text">${hlNum(fullText)}</div></details>` : ''}
+          </article>`;
+        }).join('');
+        answerEl.querySelectorAll('.cite').forEach(el => {
+          el.addEventListener('click', () => {
+            const ref = document.getElementById('ref-' + el.dataset.ref);
+            if (ref) {
+              ref.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              ref.classList.add('evidence-highlight');
+              setTimeout(() => ref.classList.remove('evidence-highlight'), 3000);
+            }
+          });
+        });
+      } catch (err) {
+        answerEl.innerHTML = `<div class="answer-head">综合回答</div><div class="error">${esc(err.message)}</div>`;
+      } finally {
+        ragBtn.disabled = false;
+        ragBtn.textContent = 'AI 综合回答';
+      }
+    });
   </script>
 </body>
 </html>
@@ -267,6 +372,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/search":
             self.handle_search(parsed.query)
+            return
+        if parsed.path == "/api/rag":
+            self.handle_rag(parsed.query)
             return
         self.send_error(404)
 
@@ -286,6 +394,26 @@ class Handler(BaseHTTPRequestHandler):
                 chunk_type=params.get("chunk_type", [""])[0] or None,
             )
             self.respond_json({"results": hits})
+        except Exception as exc:
+            self.respond_json({"error": str(exc)}, status=500)
+
+    def handle_rag(self, raw_query: str) -> None:
+        params = parse_qs(raw_query)
+        query = params.get("query", [""])[0].strip()
+        if not query:
+            self.respond_json({"error": "query is required"}, status=400)
+            return
+        try:
+            hits = search(
+                query=query,
+                top_k=int(params.get("top_k", ["5"])[0] or 5),
+                corpus=params.get("corpus", [""])[0] or None,
+                region=params.get("region", [""])[0] or None,
+                period=params.get("period", [""])[0] or None,
+                chunk_type=params.get("chunk_type", [""])[0] or None,
+            )
+            answer = call_llm(query, hits)
+            self.respond_json({"answer": answer, "results": hits})
         except Exception as exc:
             self.respond_json({"error": str(exc)}, status=500)
 
