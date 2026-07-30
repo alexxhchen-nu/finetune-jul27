@@ -250,8 +250,13 @@ HTML = """
     .tag { color: #d9e7ff; background: rgba(143,124,255,.15); border: 1px solid rgba(143,124,255,.28); padding: 5px 9px; border-radius: 999px; font-size: 12px; }
     .title { font-size: 18px; font-weight: 800; margin-bottom: 6px; }
     .meta { color: var(--muted); font-size: 13px; line-height: 1.65; margin-bottom: 14px; }
-    .text { color: #263b57; line-height: 1.8; white-space: pre-wrap; max-height: 9.8em; overflow: hidden; }
+    .text { color: #263b57; line-height: 1.8; white-space: pre-wrap; max-height: 10em; overflow: hidden; position: relative; }
+    .text.truncated::after {
+      content: ""; position: absolute; bottom: 0; left: 0; right: 0; height: 2.5em;
+      background: linear-gradient(transparent, rgba(255,255,255,.95));
+    }
     details[open] .text { max-height: none; }
+    details[open] .text::after { display: none; }
     summary { cursor: pointer; color: var(--blue); font-weight: 700; margin-top: 12px; }
     .empty, .error { border: 1px dashed var(--line); border-radius: 20px; padding: 22px; color: var(--muted); background: rgba(255,255,255,.7); }
     .error { color: var(--danger); border-color: rgba(255,114,138,.34); }
@@ -414,7 +419,7 @@ HTML = """
             <div class="title">${esc(e.title || '未命名文档')}</div>
             <div class="meta"><strong>章节</strong>：${esc(e.heading || '无')}<br><strong>来源</strong>：${esc(e.source_file || '')}<br><strong>属性</strong>：${esc([e.region, e.period, e.chunk_topics].filter(Boolean).join(' · ') || '无')}</div>
             ${keyData ? `<div class="key-data">${keyData}</div>` : ''}
-            <div class="text">${hlNum(preview(fullText))}</div>
+            <div class="text truncated">${hlNum(preview(fullText))}</div>
             ${fullText.length > 360 ? `<details><summary>展开全文</summary><div class="text">${hlNum(fullText)}</div></details>` : ''}
           </article>`;
         }).join('');
@@ -448,7 +453,7 @@ HTML = """
             <div class="title">${esc(e.title || '未命名文档')}</div>
             <div class="meta"><strong>章节</strong>：${esc(e.heading || '无')}<br><strong>来源</strong>：${esc(e.source_file || '')}<br><strong>属性</strong>：${esc([e.region, e.period, e.chunk_topics].filter(Boolean).join(' · ') || '无')}</div>
             ${keyData ? `<div class="key-data">${keyData}</div>` : ''}
-            <div class="text">${hlNum(preview(fullText))}</div>
+            <div class="text truncated">${hlNum(preview(fullText))}</div>
             ${fullText.length > 360 ? `<details><summary>展开全文</summary><div class="text">${hlNum(fullText)}</div></details>` : ''}
           </article>`;
         }).join('');
