@@ -156,6 +156,12 @@ HTML = """
     summary { cursor: pointer; color: var(--blue); font-weight: 700; margin-top: 12px; }
     .empty, .error { border: 1px dashed var(--line); border-radius: 20px; padding: 22px; color: var(--muted); background: rgba(255,255,255,.7); }
     .error { color: var(--danger); border-color: rgba(255,114,138,.34); }
+    .num { color: var(--blue); font-weight: 700; background: rgba(35,103,255,.08); padding: 0 3px; border-radius: 4px; }
+    .key-data { display:flex; gap: 8px; flex-wrap:wrap; margin: 10px 0; }
+    .key-data .chip { color: var(--text); background: rgba(35,103,255,.06); border: 1px solid rgba(35,103,255,.14); padding: 4px 10px; border-radius: 8px; font-size: 13px; }
+    .key-data .chip b { color: var(--blue); }
+    .group { margin-bottom: 24px; }
+    .group-head { font-size: 15px; font-weight: 800; color: var(--violet); margin-bottom: 10px; padding-bottom: 6px; border-bottom: 2px solid rgba(118,88,255,.18); }
     @media (max-width: 900px) { .hero { grid-template-columns: 1fr; } .hero-copy { padding: 28px; } .nav-links { display:none; } }
     @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } .shell { width: min(100% - 20px, 1180px); } h1 { font-size: 43px; } }
   </style>
@@ -208,6 +214,11 @@ HTML = """
     const esc = s => String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const clean = s => String(s || '').replace(/\\s+/g, ' ').trim();
     const preview = s => clean(s).slice(0, 360) + (clean(s).length > 360 ? '…' : '');
+    const hlNum = s => esc(s).replace(/(\\d[\\d,.]*\\d|\\d)(座|件|个|米|厘米|cm|mm|层|年|岁|种|类|型|式|组|座|M|m)/g, '<span class="num">$1$2</span>');
+    const extractKeyData = s => {
+      const nums = [...s.matchAll(/(\\d[\\d,.]*\\d|\\d)(座|件|个|米|厘米|层|年|种|类|型|式|组)/g)].slice(0, 6);
+      return nums.map(m => `<span class="chip"><b>${esc(m[1])}</b>${esc(m[2])}</span>`).join('');
+    };
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       const params = new URLSearchParams(new FormData(form));
@@ -225,12 +236,14 @@ HTML = """
         results.innerHTML = data.results.map((hit, i) => {
           const e = hit.entity || {};
           const fullText = clean(e.text);
+          const keyData = extractKeyData(fullText);
           return `<article class="result">
             <div class="result-top"><span class="score">#${i + 1} · ${Number(hit.distance).toFixed(4)}</span></div>
             <div class="title">${esc(e.title || '未命名文档')}</div>
             <div class="meta"><strong>章节</strong>：${esc(e.heading || '无')}<br><strong>来源</strong>：${esc(e.source_file || '')}<br><strong>属性</strong>：${esc([e.region, e.period, e.chunk_topics].filter(Boolean).join(' · ') || '无')}</div>
-            <div class="text">${esc(preview(fullText))}</div>
-            ${fullText.length > 360 ? `<details><summary>展开全文</summary><div class="text">${esc(fullText)}</div></details>` : ''}
+            ${keyData ? `<div class="key-data">${keyData}</div>` : ''}
+            <div class="text">${hlNum(preview(fullText))}</div>
+            ${fullText.length > 360 ? `<details><summary>展开全文</summary><div class="text">${hlNum(fullText)}</div></details>` : ''}
           </article>`;
         }).join('');
       } catch (err) {
