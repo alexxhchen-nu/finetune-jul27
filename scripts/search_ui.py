@@ -139,6 +139,45 @@ HTML = """
       mask-image: linear-gradient(to bottom, black, transparent 80%);
     }
     .shell { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 24px 0 64px; position: relative; }
+    .layout { display: flex; gap: 24px; }
+    .main-col { flex: 1; min-width: 0; }
+    .side-col { width: 380px; flex-shrink: 0; }
+    .side-panel {
+      position: sticky; top: 24px; max-height: calc(100vh - 48px); overflow-y: auto;
+      border: 1px solid var(--line); border-radius: 20px; padding: 18px;
+      background: rgba(255,255,255,.92); box-shadow: 0 12px 40px rgba(30,58,138,.08);
+    }
+    .side-panel.collapsed { display: none; }
+    .side-toggle {
+      position: fixed; right: 16px; top: 50%; transform: translateY(-50%);
+      z-index: 100; width: 40px; height: 80px; border: 1px solid var(--line);
+      border-radius: 12px 0 0 12px; background: rgba(255,255,255,.95);
+      box-shadow: -4px 0 20px rgba(30,58,138,.08); cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--violet); font-size: 18px; font-weight: 800;
+    }
+    .side-toggle:hover { background: rgba(118,88,255,.08); }
+    .side-title { font-size: 14px; font-weight: 800; color: var(--violet); margin-bottom: 12px; }
+    .side-item {
+      padding: 10px; margin-bottom: 8px; border: 1px solid var(--line); border-radius: 12px;
+      cursor: pointer; font-size: 13px; line-height: 1.6;
+      background: rgba(255,255,255,.6);
+    }
+    .side-item:hover { background: rgba(35,103,255,.06); border-color: rgba(35,103,255,.2); }
+    .side-item .si-title { font-weight: 700; color: var(--text); margin-bottom: 4px; }
+    .side-item .si-meta { color: var(--muted); font-size: 12px; }
+    .side-item .si-text { color: #52657d; margin-top: 6px; max-height: 4.5em; overflow: hidden; }
+    .tooltip {
+      position: fixed; z-index: 200; max-width: 420px; padding: 14px 16px;
+      background: #fff; border: 1px solid var(--line); border-radius: 14px;
+      box-shadow: 0 12px 40px rgba(30,58,138,.18); font-size: 13px; line-height: 1.7;
+      color: #263b57; pointer-events: none; opacity: 0; transition: opacity .15s;
+    }
+    .tooltip.visible { opacity: 1; }
+    .tooltip .tt-title { font-weight: 800; margin-bottom: 6px; color: var(--text); }
+    .tooltip .tt-meta { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+    .tooltip .tt-text { max-height: 12em; overflow: hidden; }
+    @media (max-width: 1100px) { .side-col { display: none; } .side-toggle { display: none; } }
     .nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 44px; }
     .brand { display: flex; gap: 12px; align-items: center; font-weight: 700; letter-spacing: .02em; }
     .mark {
@@ -257,8 +296,20 @@ HTML = """
         <button id="rag-btn" type="button" style="margin-top:10px;background:linear-gradient(135deg,var(--violet),var(--blue) 55%,var(--cyan));color:#fff;">AI 综合回答</button>
       </form>
     </section>
-    <section class="answer" id="answer" style="display:none;"></section>
-    <section class="results" id="results"><div class="empty">等待查询。索引重建完成后即可检索。</div></section>
+    <div class="layout">
+      <div class="main-col">
+        <section class="answer" id="answer" style="display:none;"></section>
+        <section class="results" id="results"><div class="empty">等待查询。索引重建完成后即可检索。</div></section>
+      </div>
+      <div class="side-col">
+        <div class="side-panel" id="side-panel">
+          <div class="side-title">证据列表</div>
+          <div id="side-items"><div class="empty" style="font-size:13px;">检索后显示全部证据</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="side-toggle" id="side-toggle" title="切换证据面板">◀</div>
+    <div class="tooltip" id="tooltip"></div>
   </main>
   <script>
     const chunkTypes = __CHUNK_TYPES__;
@@ -282,6 +333,38 @@ HTML = """
     };
     const answerEl = document.querySelector('#answer');
     const ragBtn = document.querySelector('#rag-btn');
+    const sidePanel = document.querySelector('#side-panel');
+    const sideItems = document.querySelector('#side-items');
+    const sideToggle = document.querySelector('#side-toggle');
+    const tooltip = document.querySelector('#tooltip');
+
+    function updateSidePanel(hits) {
+      sideItems.innerHTML = hits.map((hit, i) => {
+        const e = hit.entity || {};
+        return `<div class="side-item" data-idx="${i}">
+          <div class="si-title">[${i+1}] ${esc(e.title || '')}</div>
+          <div class="si-meta">${esc(e.heading || '')} · ${esc(e.chunk_type || '')}</div>
+          <div class="si-text">${esc(clean(e.text).slice(0, 120))}…</div>
+        </div>`;
+      }).join('');
+    }
+
+    function showTooltip(el, hit) {
+      const e = hit.entity || {};
+      tooltip.innerHTML = `<div class="tt-title">${esc(e.title || '')} · ${esc(e.heading || '')}</div><div class="tt-meta">${esc(e.chunk_type || '')} · ${esc(e.source_file || '')}</div><div class="tt-text">${esc(clean(e.text).slice(0, 500))}</div>`;
+      const rect = el.getBoundingClientRect();
+      tooltip.style.left = Math.min(rect.left, window.innerWidth - 440) + 'px';
+      tooltip.style.top = (rect.bottom + 8) + 'px';
+      tooltip.classList.add('visible');
+    }
+    function hideTooltip() { tooltip.classList.remove('visible'); }
+
+    sideToggle.addEventListener('click', () => {
+      sidePanel.classList.toggle('collapsed');
+      sideToggle.textContent = sidePanel.classList.contains('collapsed') ? '▶' : '◀';
+    });
+
+    let lastHits = [];
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       const params = new URLSearchParams(new FormData(form));
@@ -309,6 +392,8 @@ HTML = """
             ${fullText.length > 360 ? `<details><summary>展开全文</summary><div class="text">${hlNum(fullText)}</div></details>` : ''}
           </article>`;
         }).join('');
+        lastHits = data.results;
+        updateSidePanel(data.results);
       } catch (err) {
         results.innerHTML = `<div class="error">${esc(err.message)}</div>`;
       } finally {
@@ -341,7 +426,14 @@ HTML = """
             ${fullText.length > 360 ? `<details><summary>展开全文</summary><div class="text">${hlNum(fullText)}</div></details>` : ''}
           </article>`;
         }).join('');
+        lastHits = data.results;
+        updateSidePanel(data.results);
         answerEl.querySelectorAll('.cite').forEach(el => {
+          const refIdx = parseInt(el.dataset.ref) - 1;
+          el.addEventListener('mouseenter', () => {
+            if (lastHits[refIdx]) showTooltip(el, lastHits[refIdx]);
+          });
+          el.addEventListener('mouseleave', hideTooltip);
           el.addEventListener('click', () => {
             const ref = document.getElementById('ref-' + el.dataset.ref);
             if (ref) {
