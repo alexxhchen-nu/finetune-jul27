@@ -34,13 +34,24 @@ CHUNK_TYPES = [
 
 RAG_PROMPT = """你是一位考古学研究助手。根据以下检索到的考古报告原文片段，回答用户的问题。
 
-规则：
-1. 只基于提供的原文回答，不要编造
-2. 每个关键论述必须标注出处，格式为 [1] [2] 等（对应原文片段编号）
-3. 如果原文中有具体数字（墓数、尺寸、年代），必须引用
-4. 如果原文之间有矛盾，指出矛盾
-5. 如果原文不足以回答问题，说明缺少什么信息
-6. 用中文回答，简洁准确"""
+输出格式要求：
+- 用分类标题组织回答（如：墓葬形制、随葬器物、年代分期、发掘方法等）
+- 每个分类下用 bullet points 列出关键信息
+- 每个 bullet point 后标注出处 [1] [2] 等
+- 如果有具体数字（墓数、尺寸、年代），必须引用并加粗
+- 如果原文之间有矛盾，单独列出"数据矛盾"分类
+- 如果原文不足以回答问题，列出"信息缺口"分类
+
+格式示例：
+## 墓葬形制
+- **竖穴土坑墓 119座**，土洞墓 17座 [1]
+- 墓口深 **0.3米**，长 **3.6米**，宽 **1.6米** [2]
+
+## 随葬器物
+- 陶罐 2件，铜带钩 1件 [2]
+- 器物组合按类型分为 5 类 [1]
+
+用中文回答，简洁准确。"""
 
 
 def call_llm(query: str, hits: list[dict]) -> str:
@@ -259,6 +270,11 @@ HTML = """
     .answer-body { color: #263b57; line-height: 1.9; font-size: 15px; }
     .answer-body .cite { color: var(--blue); cursor: pointer; font-weight: 700; text-decoration: underline; text-decoration-color: rgba(35,103,255,.3); }
     .answer-body .cite:hover { background: rgba(35,103,255,.08); border-radius: 4px; padding: 0 2px; }
+    .ans-h2 { font-size: 16px; font-weight: 800; color: var(--violet); margin: 18px 0 8px; padding-bottom: 4px; border-bottom: 1px solid rgba(118,88,255,.15); }
+    .ans-h2:first-child { margin-top: 0; }
+    .ans-h3 { font-size: 14px; font-weight: 700; color: var(--text); margin: 12px 0 6px; }
+    .ans-li { margin: 4px 0; padding-left: 8px; line-height: 1.8; }
+    .ans-li strong { color: var(--blue); }
     .evidence-highlight { background: rgba(35,103,255,.10); border-left: 3px solid var(--blue); padding: 2px 8px; border-radius: 4px; }
     @media (max-width: 900px) { .hero { grid-template-columns: 1fr; } .hero-copy { padding: 28px; } .nav-links { display:none; } }
     @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } .shell { width: min(100% - 20px, 1180px); } h1 { font-size: 43px; } }
@@ -327,6 +343,16 @@ HTML = """
     const clean = s => String(s || '').replace(/\\s+/g, ' ').trim();
     const preview = s => clean(s).slice(0, 360) + (clean(s).length > 360 ? '…' : '');
     const hlNum = s => esc(s).replace(/(\\d[\\d,.]*\\d|\\d)(座|件|个|米|厘米|cm|mm|层|年|岁|种|类|型|式|组|座|M|m)/g, '<span class="num">$1$2</span>');
+    const renderAnswer = s => {
+      let html = esc(s || '');
+      html = html.replace(/\\[(\\d+)\\]/g, '<span class="cite" data-ref="$1">[$1]</span>');
+      html = html.replace(/^## (.+)$/gm, '<div class="ans-h2">$1</div>');
+      html = html.replace(/^### (.+)$/gm, '<div class="ans-h3">$1</div>');
+      html = html.replace(/^- (.+)$/gm, '<div class="ans-li">• $1</div>');
+      html = html.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>');
+      html = html.replace(/\\n{2,}/g, '<br><br>');
+      return html;
+    };
     const extractKeyData = s => {
       const nums = [...s.matchAll(/(\\d[\\d,.]*\\d|\\d)(座|件|个|米|厘米|层|年|种|类|型|式|组)/g)].slice(0, 6);
       return nums.map(m => `<span class="chip"><b>${esc(m[1])}</b>${esc(m[2])}</span>`).join('');
@@ -411,7 +437,7 @@ HTML = """
         const res = await fetch('/api/rag?' + params.toString());
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'RAG 失败');
-        let answerHtml = esc(data.answer || '').replace(/\\[(\\d+)\\]/g, '<span class="cite" data-ref="$1">[$1]</span>');
+        let answerHtml = renderAnswer(data.answer || '');
         answerEl.innerHTML = `<div class="answer-head">综合回答</div><div class="answer-body">${answerHtml}</div>`;
         results.innerHTML = data.results.map((hit, i) => {
           const e = hit.entity || {};
