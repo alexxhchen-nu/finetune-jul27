@@ -100,7 +100,7 @@ HTML = """
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Archaeology DataLab</title>
+  <title>Arch RAG</title>
   <style>
     :root {
       --bg: #f6f8fc;
@@ -267,7 +267,7 @@ HTML = """
 <body>
   <main class="shell">
     <nav class="nav">
-      <div class="brand"><div class="mark"></div><span>Archaeology DataLab</span></div>
+      <div class="brand"><div class="mark"></div><span>Arch RAG</span></div>
       <div class="nav-links"><span>Milvus Lite</span><span>BAAI/bge-m3</span><span>SiliconFlow</span></div>
     </nav>
     <section class="hero">
