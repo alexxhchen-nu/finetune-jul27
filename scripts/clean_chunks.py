@@ -22,21 +22,17 @@ PROGRESS_PATH = Path("archaeology_model/indices/clean_progress.json")
 BATCH_DELAY_SECONDS = 0.3
 MAX_RETRIES = 5
 
-CLEAN_PROMPT = """你是一位考古学文本清洗专家。下面是从考古发掘报告 OCR 扫描件中提取的多段文本，用 <chunk id="..."> 和 </chunk> 标签分隔。
+CLEAN_PROMPT = """清洗这段考古OCR文本：
+1. 删除LaTeX标记（$...$），保留数值（如6°）
+2. 删除图版引用（如"（图三○五）"）
+3. 删除插图编号标记
+4. 统一标本编号（如"标本 XM18:2"→"XM18:2"）
+5. 清理多余空格空行
+6. 保留所有实质内容：墓葬形制、随葬器物、尺寸数据、年代判断
+7. 修复明显OCR错误
+8. 不要改写原文意思
 
-请逐段清洗，遵循以下规则：
-
-1. 删除所有 LaTeX 公式标记（如 $...$、\\frac、^{}），只保留数值（如方向角 6°）
-2. 删除图版引用（如"（图三○五）""（图一八，4；彩版五一，6）"）
-3. 删除插图编号标记（如"图一九六：1"）
-4. 统一标本编号格式（如"标本 XM18:2"→"XM18:2"，"标本 M49：1"→"M49:1"）
-5. 清理多余空格、空行，保持段落结构
-6. 保留所有实质性内容：墓葬形制、随葬器物、尺寸数据、年代判断、地层关系等
-7. 如果有表格数据，保留关键数值，删除格式标记
-8. 修复明显 OCR 错误（如乱码字符）
-9. 不要添加任何新内容，不要改写原文意思
-
-输出格式：用 <chunk id="..."> 和 </chunk> 包裹每段清洗后的文本，id 保持原样。不要添加其他内容。"""
+只输出清洗后的文本，不要解释。"""
 
 
 def load_env(path: str = ".env") -> None:
@@ -73,7 +69,7 @@ def clean_one(client: OpenAI, model: str, text: str, max_retries: int = MAX_RETR
         except Exception as e:
             last_error = e
             err = str(e).lower()
-            if any(code in err for code in ("429", "500", "502", "503", "504", "rate limit", "overloaded", "timeout")):
+            if any(code in err for code in ("429", "500", "502", "503", "504", "rate limit", "overloaded", "timeout", "connection")):
                 time.sleep(2 ** attempt)
                 continue
             raise
@@ -102,7 +98,7 @@ def clean_one(client: OpenAI, model: str, text: str, max_retries: int = MAX_RETR
         except Exception as e:
             last_error = e
             err = str(e).lower()
-            if any(code in err for code in ("429", "500", "502", "503", "504", "rate limit", "overloaded", "timeout")):
+            if any(code in err for code in ("429", "500", "502", "503", "504", "rate limit", "overloaded", "timeout", "connection")):
                 time.sleep(2 ** attempt)
                 continue
             raise
@@ -114,16 +110,16 @@ def main() -> None:
     load_env()
     api_key = os.getenv("OPENAI_API_KEY", "")
     base_url = os.getenv("OPENAI_BASE_URL", "https://api.siliconflow.cn/v1")
-    clean_model = os.getenv("CLEAN_MODEL", "Qwen/Qwen2.5-14B-Instruct")
+    clean_model = os.getenv("CLEAN_MODEL", "Qwen/Qwen2.5-7B-Instruct")
 
-    client = OpenAI(api_key=api_key, base_url=base_url, timeout=180.0)
+    client = OpenAI(api_key=api_key, base_url=base_url, timeout=90.0)
 
     milvus = MilvusClient(uri=DB_PATH)
     milvus.load_collection(COLLECTION_NAME)
 
     results = milvus.query(
         collection_name=COLLECTION_NAME,
-        output_fields=["id", "text"],
+        output_fields=["id", "text", "vector", "title", "source_type", "region", "period", "source_file", "heading", "corpus", "chunk_type", "chunk_topics"],
         limit=50000,
     )
 
@@ -141,9 +137,10 @@ def main() -> None:
     for idx, rec in enumerate(pending):
         new_text = clean_one(client, clean_model, rec["text"])
         try:
+            rec["text"] = new_text
             milvus.upsert(
                 collection_name=COLLECTION_NAME,
-                data=[{"id": rec["id"], "text": new_text}],
+                data=[rec],
             )
             cleaned += 1
             done_ids.add(rec["id"])
